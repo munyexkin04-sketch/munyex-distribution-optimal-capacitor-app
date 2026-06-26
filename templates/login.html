@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login - Multi-Bus Capacitor Optimization App</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <style>
+    .password-container {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .password-container input {
+      flex: 1;
+      padding-right: 40px;
+    }
+
+    .password-toggle-btn {
+      position: absolute;
+      right: 12px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+      color: #666;
+      padding: 4px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .password-toggle-btn:hover {
+      color: #333;
+    }
+  </style>
+</head>
+<body class="login-page">
+  <div class="page-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Secure Access</p>
+        <h1>Login to the Optimizer</h1>
+        <p class="hero-copy">Enter your credentials to access the capacitor optimization interface.</p>
+      </div>
+      <div class="hero-badge">Login</div>
+    </header>
+
+    <main>
+      <section class="panel" style="max-width: 540px; margin: 0 auto;">
+        <div class="card card-soft">
+          <h2>Sign In</h2>
+          {% if error %}
+            <div class="alert alert-error">{{ error }}</div>
+          {% endif %}
+          <form method="post" class="form-grid" id="loginForm">
+            <label>Username<input type="text" name="username" required autofocus /></label>
+            <label>
+              Password
+              <div class="password-container">
+                <input type="password" id="passwordInput" name="password" required />
+                <button type="button" class="password-toggle-btn" id="togglePasswordBtn">👁️</button>
+              </div>
+            </label>
+            <button class="btn btn-primary" type="submit">Login</button>
+          </form>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="loading-overlay" id="loginLoading" aria-hidden="true">
+    <div class="loading-content">
+      <div class="loader"></div>
+      <p>Logging in... Please wait.</p>
+    </div>
+  </div>
+
+  <script>
+    const passwordInput = document.getElementById('passwordInput');
+    const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+    const loginForm = document.getElementById('loginForm');
+    const loginLoading = document.getElementById('loginLoading');
+
+    togglePasswordBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        togglePasswordBtn.textContent = '🙈';
+      } else {
+        passwordInput.type = 'password';
+        togglePasswordBtn.textContent = '👁️';
+      }
+    });
+
+    loginForm.addEventListener('submit', function(e) {
+      // Show loading spinner before submitting login
+      loginLoading.setAttribute('aria-hidden', 'false');
+      loginLoading.style.display = 'flex';
+      const submitButton = loginForm.querySelector('button[type="submit"]');
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Logging in...';
+      }
+
+      // Delay the actual submit briefly so the spinner is visible
+      e.preventDefault();
+      setTimeout(() => loginForm.submit(), 800);
+    });
+  </script>
+</body>
+</html>
