@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multi-Bus Capacitor Optimization App</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Silkscreen&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Smart Power Optimization</p>
+        <h1>Multi-Bus Capacitor Placement (15/33/34/69/85-Bus)</h1>
+        <p class="hero-copy">Use PSO, GA, or WCA algorithms across different distribution systems to find optimal capacitor settings.</p>
+      </div>
+      <div>
+        <div class="hero-badge">Web UI</div>
+        <div class="hero-marquee">
+          <span class="marquee-text">Multi Bus System Optimizer — 15/33/34/69/85-Bus Capacitor Placement</span>
+        </div>
+        <div style="margin-top: 12px; text-align: right;">
+          {% if current_user == 'admin' %}
+            <a class="btn btn-secondary" href="{{ url_for('admin') }}">Admin</a>
+          {% endif %}
+          <a class="btn btn-secondary" href="{{ url_for('logout') }}">Logout</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel grid-2">
+        <div class="card card-soft">
+          <h2>Simulation Controls</h2>
+          <form method="post" class="form-grid" id="optimizationForm">
+            <div style="grid-column: 1 / -1;">
+              <label style="margin-bottom: 12px; display: block; font-weight: 600; color: var(--text);">Algorithm</label>
+              <div class="algo-buttons">
+                <button type="button" class="algo-btn {% if params.algorithm == 'PSO' %}algo-active{% endif %}" data-algo="PSO">PSO</button>
+                <button type="button" class="algo-btn {% if params.algorithm == 'GA' %}algo-active{% endif %}" data-algo="GA">GA</button>
+                <button type="button" class="algo-btn {% if params.algorithm == 'WCA' %}algo-active{% endif %}" data-algo="WCA">WCA</button>
+                <button type="button" class="algo-btn {% if params.algorithm == 'WBNO' %}algo-active{% endif %}" data-algo="WBNO">WBNO</button>
+              </div>
+              <input type="hidden" name="algorithm" value="{{ params.algorithm }}" id="algorithmInput" />
+            </div>
+            <div id="algorithmOptions" style="grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem;">
+              <div id="psOptions" class="algo-option-panel" style="display: none;">
+                <label>Velocity limit<input type="number" name="v_max" min="1" step="0.1" value="{{ params.v_max }}" /></label>
+                <label>Inertia (w)<input type="number" name="w" min="0" step="0.01" value="{{ params.w }}" /></label>
+                <label>C1<input type="number" name="c1" min="0" step="0.01" value="{{ params.c1 }}" /></label>
+                <label>C2<input type="number" name="c2" min="0" step="0.01" value="{{ params.c2 }}" /></label>
+              </div>
+              <div id="gaOptions" class="algo-option-panel" style="display: none;">
+                <label>Crossover rate<input type="number" name="crossover_rate" min="0" max="1" step="0.01" value="{{ params.crossover_rate }}" /></label>
+                <label>Mutation rate<input type="number" name="mutation_rate" min="0" max="1" step="0.01" value="{{ params.mutation_rate }}" /></label>
+              </div>
+              <div id="wcaOptions" class="algo-option-panel" style="display: none;">
+                <label>River ratio<input type="number" name="river_ratio" min="0.01" max="0.5" step="0.01" value="{{ params.river_ratio }}" /></label>
+              </div>
+              <div id="wbnoOptions" class="algo-option-panel" style="display: none;">
+                <label>Weaving factor<input type="number" name="weaving_factor" min="0.0" max="1.0" step="0.05" value="{{ params.weaving_factor }}" /></label>
+              </div>
+            </div>
+            <label>Bus System
+              <select name="system_id" id="systemSelector">
+                <option value="15" {% if params.system_id == '15' %}selected{% endif %}>15-Bus</option>
+                <option value="33" {% if params.system_id == '33' %}selected{% endif %}>33-Bus IEEE</option>
+                <option value="34" {% if params.system_id == '34' %}selected{% endif %}>34-Bus IEEE</option>
+                <option value="69" {% if params.system_id == '69' %}selected{% endif %}>69-Bus IEEE</option>
+                <option value="85" {% if params.system_id == '85' %}selected{% endif %}>85-Bus</option>
+              </select>
+            </label>
+            <label>Particles<input type="number" name="num_particles" min="2" value="{{ params.num_particles }}" /></label>
+            <label>Iterations<input type="number" name="max_iter" min="1" value="{{ params.max_iter }}" /></label>
+            <label>Max capacitor kVAR<input type="number" name="qcap_max" min="1" step="1" value="{{ params.qcap_max }}" /></label>
+            <div id="busInputs">
+              {% for i in range(params.bus_indices | length) %}
+              <label>Bus {{ i+1 }}<input type="number" name="bus{{ i+1 }}" min="1" value="{{ params.bus_indices[i] }}" /></label>
+              {% endfor %}
+            </div>
+            <button class="btn btn-primary" type="submit" style="grid-column: 1 / -1;">Run Optimization</button>
+          </form>
+        </div>
+
+        <div class="card card-highlight">
+          <h2>Quick Summary</h2>
+          {% if error %}
+            <div class="alert alert-error">{{ error }}</div>
+          {% elif result %}
+            <div class="summary-grid">
+              <div class="summary-card">
+                <strong>Initial Loss</strong>
+                <span>{{ result.initial_loss | round(4) }} kW</span>
+              </div>
+              <div class="summary-card">
+                <strong>Optimal Loss</strong>
+                <span>{{ result.final_loss | round(4) }} kW</span>
+              </div>
+              <div class="summary-card">
+                <strong>Reduction</strong>
+                <span>{{ result.loss_reduction | round(2) }}%</span>
+              </div>
+              <div class="summary-card">
+                <strong>Algorithm</strong>
+                <span>{{ result.algorithm }}</span>
+              </div>
+              <div class="summary-card">
+                <strong>Bus targets</strong>
+                <span>{{ result.bus_indices | join(', ') }}</span>
+              </div>
+            </div>
+          {% else %}
+            <p>Submit the form to see optimized capacitor placements and performance charts.</p>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="card card-soft card-full">
+          <h2>Bus Diagram</h2>
+          <p>Select a system above, then click Run Optimization to refresh the diagram and results.</p>
+          <img id="busDiagramImg" src="/bus_diagram.png?system_id={{ params.system_id }}" alt="Bus Diagram" style="width:100%;max-width:100%;height:auto;border:1px solid #d1d5db;border-radius:12px;" />
+        </div>
+      </section>
+
+      {% if result %}
+      <section class="panel">
+        <div class="card card-soft card-full">
+          <h2>Detailed Results</h2>
+          <div class="result-row">
+            {% for value in result.gbest_pos %}
+              <div>
+                <span class="label">Bus {{ result.bus_indices[loop.index0] }}</span>
+                <p class="value">{{ value | round(2) }} kVAR</p>
+              </div>
+            {% endfor %}
+          </div>
+          <div class="charts">
+            <div class="chart-card">
+              <h3>Loss Convergence</h3>
+              <canvas id="convergenceChart"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>Voltage Profile</h3>
+              <canvas id="voltageChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+      {% endif %}
+    </main>
+  </div>
+
+  {% if result %}
+  <script>
+    const convergenceData = {{ result.convergence | tojson }};
+    const baseVData = {{ result.base_v | tojson }};
+    const finalVData = {{ result.final_v | tojson }};
+
+    new Chart(document.getElementById('convergenceChart'), {
+      type: 'line',
+      data: {
+        labels: convergenceData.map((_, i) => i + 1),
+        datasets: [{
+          label: 'Loss (kW)',
+          data: convergenceData,
+          borderColor: '#7f5af0',
+          backgroundColor: 'rgba(127, 90, 240, 0.12)',
+          tension: 0.25,
+          fill: true,
+          pointRadius: 4
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: false }, x: { title: { display: true, text: 'Iteration' } } }
+      }
+    });
+
+    new Chart(document.getElementById('voltageChart'), {
+      type: 'line',
+      data: {
+        labels: baseVData.map((_, i) => i + 1),
+        datasets: [
+          {
+            label: 'Base Voltage',
+            data: baseVData,
+            borderColor: '#0ea5e9',
+            backgroundColor: 'rgba(14, 165, 233, 0.14)',
+            tension: 0.25,
+            fill: false,
+            pointRadius: 3
+          },
+          {
+            label: 'With Capacitors',
+            data: finalVData,
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.14)',
+            tension: 0.25,
+            fill: false,
+            pointRadius: 3
+          }
+        ]
+      },
+      options: {
+        scales: { y: { beginAtZero: false }, x: { title: { display: true, text: 'Bus Number' } } }
+      }
+    });
+  </script>
+  {% endif %}
+
+  <script>
+    // System configurations for bus inputs
+    const systemBuses = {
+      '15': { default_buses: [5, 9, 12, 15], num_buses: 15 },
+      '33': { default_buses: [6, 14, 24, 30], num_buses: 33 },
+      '34': { default_buses: [8, 16, 23, 32], num_buses: 34 },
+      '69': { default_buses: [12, 15, 42, 62], num_buses: 69 },
+      '85': { default_buses: [3, 39, 2, 18], num_buses: 85 }
+    };
+
+    // Handle system selector change
+    document.getElementById('systemSelector').addEventListener('change', function() {
+      const systemId = this.value;
+      const config = systemBuses[systemId];
+      const form = this.closest('form');
+      
+      // Update system_id hidden input
+      let systemInput = form.querySelector('input[name="system_id"]');
+      if (!systemInput) {
+        systemInput = document.createElement('input');
+        systemInput.type = 'hidden';
+        systemInput.name = 'system_id';
+        form.appendChild(systemInput);
+      }
+      systemInput.value = systemId;
+      
+      // Update bus inputs
+      const busInputsDiv = document.getElementById('busInputs');
+      busInputsDiv.innerHTML = '';
+      config.default_buses.forEach((bus, i) => {
+        const label = document.createElement('label');
+        label.innerHTML = `Bus ${i+1}<input type="number" name="bus${i+1}" min="1" max="${config.num_buses}" value="${bus}" />`;
+        busInputsDiv.appendChild(label);
+      });
+
+      const busDiagramImg = document.getElementById('busDiagramImg');
+      if (busDiagramImg) {
+        busDiagramImg.src = `/bus_diagram.png?system_id=${systemId}&_=${Date.now()}`;
+      }
+    });
+
+    // Ensure system_id is in form when submitting
+    document.querySelector('form').addEventListener('submit', function(e) {
+      let systemInput = this.querySelector('input[name="system_id"]');
+      if (!systemInput) {
+        systemInput = document.createElement('input');
+        systemInput.type = 'hidden';
+        systemInput.name = 'system_id';
+        systemInput.value = document.getElementById('systemSelector').value;
+        this.appendChild(systemInput);
+      }
+    });
+
+    function updateAlgorithmOptions(selectedAlgo) {
+      const psOptions = document.getElementById('psOptions');
+      const gaOptions = document.getElementById('gaOptions');
+      const wcaOptions = document.getElementById('wcaOptions');
+      const wbnoOptions = document.getElementById('wbnoOptions');
+
+      psOptions.style.display = selectedAlgo === 'PSO' ? 'grid' : 'none';
+      gaOptions.style.display = selectedAlgo === 'GA' ? 'grid' : 'none';
+      wcaOptions.style.display = selectedAlgo === 'WCA' ? 'grid' : 'none';
+      wbnoOptions.style.display = selectedAlgo === 'WBNO' ? 'grid' : 'none';
+    }
+
+    // Handle algorithm button selection
+    document.querySelectorAll('.algo-btn').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        const algo = this.dataset.algo;
+        document.getElementById('algorithmInput').value = algo;
+
+        document.querySelectorAll('.algo-btn').forEach(b => {
+          b.classList.remove('algo-active');
+        });
+        this.classList.add('algo-active');
+        updateAlgorithmOptions(algo);
+      });
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+      updateAlgorithmOptions(document.getElementById('algorithmInput').value);
+    });
+  </script>
+</body>
+</html>
